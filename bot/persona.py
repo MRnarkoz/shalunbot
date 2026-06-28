@@ -120,11 +120,22 @@ class Persona:
                 return mapping[key]
         return []
 
-    def _user_block(self, transcript: str, addressee: str | None) -> str:
-        block = transcript or "(в чате пока тихо)"
-        if addressee:
-            block += f"\n\n(сейчас тебе пишет {addressee} — ответь так, как ты обычно общаешься с ним)"
-        return block
+    def _current_block(self, transcript: str, addressee: str | None) -> str:
+        """ВОТ текущий разговор: прочитай всю нить, ответь на последнее сообщение."""
+        body = transcript or "(в чате пока тихо)"
+        tail = (
+            "Это текущий разговор в чате — последние сообщения по порядку "
+            "(сверху более старые, снизу самое свежее):\n\n" + body
+        )
+        who = f" от {addressee}" if addressee else ""
+        tail += (
+            "\n\nПрочитай ВЕСЬ этот контекст и пойми, о чём сейчас идёт речь: кто "
+            "кому что сказал, к чему была подводка, на что отвечают. Затем ответь "
+            f"на ПОСЛЕДНЕЕ сообщение{who} — но с учётом всей беседы выше, оставаясь "
+            "в её теме и поддерживая нить. Не перескакивай на другое и не копируй "
+            "примеры из инструкции дословно."
+        )
+        return tail
 
     # ---- сборка промпта ----
 
@@ -163,28 +174,52 @@ class Persona:
             {"role": "user", "content": user},
         ]
 
-    def build_messages(self, transcript: str, addressee: str | None = None) -> list[dict]:
-        """system + few-shot (с приоритетом примеров для текущего собеседника) + контекст."""
-        msgs: list[dict] = [{"role": "system", "content": self.system_prompt(addressee)}]
-
-        shots = max(0, settings.dialogue_shots)
+    def _pick_dialogues(self, addressee: str | None, shots: int) -> list[dict]:
+        """Диалоговые примеры: приоритет — под текущего собеседника."""
         chosen: list[dict] = []
-        if shots:
-            specific = list(self._by_addressee(self._dlg_by_addr, addressee))
-            random.shuffle(specific)
-            chosen += specific[:shots]
-            if len(chosen) < shots and self.dialogues:
-                pool = [d for d in self.dialogues if all(d is not c for c in chosen)]
-                random.shuffle(pool)
-                chosen += pool[: shots - len(chosen)]
+        if shots <= 0:
+            return chosen
+        specific = list(self._by_addressee(self._dlg_by_addr, addressee))
+        random.shuffle(specific)
+        chosen += specific[:shots]
+        if len(chosen) < shots and self.dialogues:
+            pool = [d for d in self.dialogues if all(d is not c for c in chosen)]
+            random.shuffle(pool)
+            chosen += pool[: shots - len(chosen)]
+        return chosen
 
+    def _dialogue_examples_text(self, addressee: str | None, shots: int) -> str:
+        """Диалоговые примеры как ТЕКСТ для системного промпта (не реплики диалога).
+
+        Раньше примеры подмешивались как настоящие user/assistant-ходы, и слабая
+        модель принимала их за продолжение текущего разговора — отсюда скачки по
+        темам и дословное копирование. Теперь это явно помеченные образцы.
+        """
+        chosen = self._pick_dialogues(addressee, shots)
+        blocks: list[str] = []
         for ex in chosen:
             ctx = self.format_transcript(ex.get("context", []))
-            reply = ex.get("reply", "")
+            reply = (ex.get("reply") or "").strip()
             if not ctx or not reply:
                 continue
-            msgs.append({"role": "user", "content": self._user_block(ctx, ex.get("addressee"))})
-            msgs.append({"role": "assistant", "content": reply})
+            reply_block = "\n".join(f"  {ln}" for ln in reply.splitlines())
+            blocks.append(f"{ctx}\n{self.name} отвечает:\n{reply_block}")
+        if not blocks:
+            return ""
+        sep = "\n— — —\n"
+        return (
+            "Образцы того, КАК ты отвечал в похожих ситуациях (это НЕ текущий "
+            "разговор и НЕ продолжение — только пример манеры; дословно не "
+            "копируй):\n\n" + sep.join(blocks)
+        )
 
-        msgs.append({"role": "user", "content": self._user_block(transcript, addressee)})
-        return msgs
+    def build_messages(self, transcript: str, addressee: str | None = None) -> list[dict]:
+        """system (персона + образцы-диалоги текстом) + один ход с текущим разговором."""
+        system = self.system_prompt(addressee)
+        dlg = self._dialogue_examples_text(addressee, max(0, settings.dialogue_shots))
+        if dlg:
+            system += "\n\n" + dlg
+        return [
+            {"role": "system", "content": system},
+            {"role": "user", "content": self._current_block(transcript, addressee)},
+        ]
