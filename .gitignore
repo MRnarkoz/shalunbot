@@ -1,0 +1,20 @@
+# секреты
+.env
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# сохранённая история чатов (для /summary), не коммитим
+bot/data/chat_state.json
+chat_state.json
+
+# логи / прочее
+*.log
+.DS_Store
+.idea/
+.vscode/

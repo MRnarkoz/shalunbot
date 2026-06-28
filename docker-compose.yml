@@ -1,0 +1,12 @@
+services:
+  shalunbot:
+    build: .
+    container_name: shalunbot
+    restart: unless-stopped
+    env_file: .env
+    # бот работает на long polling — порты и вебхук не нужны
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
