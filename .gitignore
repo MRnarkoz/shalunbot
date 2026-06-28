@@ -10,6 +10,7 @@ venv/
 env/
 
 # сохранённая история чатов (для /summary), не коммитим
+state/
 bot/data/chat_state.json
 chat_state.json
 

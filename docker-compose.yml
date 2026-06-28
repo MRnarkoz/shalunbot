@@ -5,8 +5,14 @@ services:
     restart: unless-stopped
     env_file: .env
     # бот работает на long polling — порты и вебхук не нужны
+    volumes:
+      # история чатов для /summary — переживает рестарт и пересборку образа
+      - shalun-state:/app/state
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
+
+volumes:
+  shalun-state:

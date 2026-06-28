@@ -41,9 +41,10 @@ class Settings(BaseSettings):
     summary_max_tokens: int = 700     # выжимка длиннее обычной реплики
     summary_temperature: float = 1.0  # чуть ровнее, чтобы пересказ был связным
 
-    # Куда сохранять историю чатов, чтобы /summary пережил перезапуск бота.
+    # Куда сохранять историю чатов, чтобы /summary пережил перезапуск/пересборку.
+    # В Docker сюда смонтирован volume (см. docker-compose.yml).
     # Пусто = не сохранять (история только в памяти, теряется при рестарте).
-    state_path: str = "bot/data/chat_state.json"
+    state_path: str = "state/chat_state.json"
 
     # Ограничить работу конкретными чатами (id через запятую). Пусто = во всех.
     allowed_chat_ids: str = ""
